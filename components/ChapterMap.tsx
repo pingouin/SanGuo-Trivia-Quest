@@ -1,14 +1,15 @@
 import React from 'react';
-import { LevelStatus, TOTAL_CHAPTERS } from '../types';
+import { LevelStatus, TOTAL_CHAPTERS, GameMode } from '../types';
 import { getChapterTitle } from '../chapterData';
 import { Lock, Unlock } from 'lucide-react';
 
 interface ChapterMapProps {
   maxUnlocked: LevelStatus;
+  gameMode: GameMode;
   onSelectLevel: (chapter: number) => void;
 }
 
-const ChapterMap: React.FC<ChapterMapProps> = ({ maxUnlocked, onSelectLevel }) => {
+const ChapterMap: React.FC<ChapterMapProps> = ({ maxUnlocked, gameMode, onSelectLevel }) => {
   const chapters = Array.from({ length: TOTAL_CHAPTERS }, (_, i) => i + 1);
 
   // Helper to get cached boss image for background
@@ -29,9 +30,6 @@ const ChapterMap: React.FC<ChapterMapProps> = ({ maxUnlocked, onSelectLevel }) =
     let str = '一百';
     if (rest === 0) return str;
     if (rest < 10) return str + '零' + digits[rest];
-    // Recursive call for 10-19 range within 100s (e.g. 115 -> 一百十五 or 一百一十五, strictly speaking 一百一十五 is better but 一百十五 is readable. Let's reuse logic)
-    // Actually reusing logic: 15 -> 十五. 115 -> 一百十五. This is acceptable in chapter titles.
-    // If we want "一百一十五", we need to tweak. But "一百十五回" is also very common. Let's stick to simple recursion.
     return str + toChineseNumeral(rest);
   }
 
@@ -40,11 +38,19 @@ const ChapterMap: React.FC<ChapterMapProps> = ({ maxUnlocked, onSelectLevel }) =
       {/* Chapters Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6">
         {chapters.map((chap) => {
-          const isUnlocked = chap <= maxUnlocked.chapter;
-          const isCompleted = chap < maxUnlocked.chapter;
-          const isCurrent = chap === maxUnlocked.chapter;
+          // Logic: 
+          // If Free Mode: All unlocked.
+          // If Story Mode: Unlocked if <= maxUnlocked.chapter.
+          const isUnlocked = gameMode === 'free' || chap <= maxUnlocked.chapter;
+          
+          // Completed logic only really applies to Story Mode for visuals, 
+          // or we can say "completed" if it is strictly less than max unlocked in story mode.
+          // In free mode, we don't strictly track "completion" visually as clearly, or we could just not show "Cleared".
+          // Let's keep it simple: Show 'Cleared' only in story mode for passed levels.
+          const isCompleted = gameMode === 'story' && chap < maxUnlocked.chapter;
+          const isCurrent = gameMode === 'story' && chap === maxUnlocked.chapter;
+          
           const title = getChapterTitle(chap);
-          // Split title by space for two-line display
           const titleParts = title.split(' ');
           const line1 = titleParts[0] || title;
           const line2 = titleParts[1] || '';
@@ -68,8 +74,8 @@ const ChapterMap: React.FC<ChapterMapProps> = ({ maxUnlocked, onSelectLevel }) =
                 ${isCurrent 
                     ? 'bg-[#FFF8E1] border-[#FFB300] shadow-[#FFB300]/40 ring-2 ring-[#FFB300]/50' 
                     : isCompleted 
-                        ? 'bg-[#E8F5E9] border-[#66BB6A]' // Light Green for completed
-                        : 'bg-[#EFEBE9] border-[#BCAAA4]' // Greyish Brown for locked
+                        ? 'bg-[#E8F5E9] border-[#66BB6A]' 
+                        : 'bg-[#EFEBE9] border-[#BCAAA4]' 
                 }
               `}></div>
 

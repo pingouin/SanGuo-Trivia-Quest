@@ -4,7 +4,7 @@ import { generateLevelQuestion, generateBossAvatar } from '../services/geminiSer
 import { getChapterData } from '../chapterData';
 import { LoadingSpinner } from './LoadingSpinner';
 import { playSound, playBGM, stopBGM } from './SoundManager';
-import { Check, X, Sword, Scroll, ArrowRight, Heart, Sparkles, AlertCircle, Shield } from 'lucide-react';
+import { Check, X, Sword, Scroll, ArrowRight, Heart, Sparkles, AlertCircle, Shield, Flag } from 'lucide-react';
 
 interface GameLevelProps {
   levelStatus: LevelStatus;
@@ -16,8 +16,10 @@ const GameLevel: React.FC<GameLevelProps> = ({ levelStatus, onComplete, onBack }
   const [question, setQuestion] = useState<Question | null>(null);
   const [bossInfo, setBossInfo] = useState<BossInfo | null>(null);
   const [bossImage, setBossImage] = useState<string | null>(null);
-  const [bossHP, setBossHP] = useState(1);
-  const [maxBossHP, setMaxBossHP] = useState(1);
+  
+  // Use -1 to indicate uninitialized HP to avoid confusion with 1 HP remaining
+  const [bossHP, setBossHP] = useState(-1);
+  const [maxBossHP, setMaxBossHP] = useState(-1);
   
   const [loading, setLoading] = useState(true);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
@@ -28,9 +30,11 @@ const GameLevel: React.FC<GameLevelProps> = ({ levelStatus, onComplete, onBack }
   const [shake, setShake] = useState(false);
   const [flash, setFlash] = useState(false);
   
-  // Hint
+  // Power-ups
   const [hintUsed, setHintUsed] = useState(false);
   const [showHint, setShowHint] = useState(false);
+  const [reinforcementUsed, setReinforcementUsed] = useState(false);
+  const [eliminatedOptions, setEliminatedOptions] = useState<number[]>([]);
 
   // Defeat Modal
   const [showDefeatModal, setShowDefeatModal] = useState(false);
@@ -53,12 +57,14 @@ const GameLevel: React.FC<GameLevelProps> = ({ levelStatus, onComplete, onBack }
     const initLevel = async () => {
       setLoading(true);
       setQuestion(null);
-      setBossImage(null);
-      setBossInfo(null);
       setSelectedOption(null);
       setIsAnswered(false);
+      
+      // Reset Power-ups
       setHintUsed(false);
       setShowHint(false);
+      setReinforcementUsed(false);
+      setEliminatedOptions([]);
 
       try {
         let currentBoss: BossInfo | undefined;
@@ -67,9 +73,11 @@ const GameLevel: React.FC<GameLevelProps> = ({ levelStatus, onComplete, onBack }
             const chapterData = getChapterData(levelStatus.chapter);
             currentBoss = chapterData.boss;
             setBossInfo(currentBoss);
-            if (bossHP === 1) { 
+            
+            if (bossHP === -1) { 
                 setBossHP(currentBoss.hp);
                 setMaxBossHP(currentBoss.hp);
+                return; 
             }
 
             const cacheKey = `boss_img_chap_${levelStatus.chapter}`;
@@ -77,7 +85,7 @@ const GameLevel: React.FC<GameLevelProps> = ({ levelStatus, onComplete, onBack }
 
             if (cachedImage) {
                 setBossImage(cachedImage);
-            } else {
+            } else if (!bossImage && !imageLoading) {
                 setImageLoading(true);
                 generateBossAvatar(currentBoss.visualPrompt).then(img => {
                     if (img) {
@@ -96,10 +104,10 @@ const GameLevel: React.FC<GameLevelProps> = ({ levelStatus, onComplete, onBack }
           currentBoss
         );
         setQuestion(q);
+        setLoading(false);
 
       } catch (e) {
         console.error("Error loading level", e);
-      } finally {
         setLoading(false);
       }
     };
@@ -108,7 +116,7 @@ const GameLevel: React.FC<GameLevelProps> = ({ levelStatus, onComplete, onBack }
   }, [levelStatus, bossHP]);
 
   const handleOptionClick = (index: number) => {
-    if (isAnswered) return;
+    if (isAnswered || eliminatedOptions.includes(index)) return;
     playSound('click');
     setSelectedOption(index);
     setIsAnswered(true);
@@ -154,10 +162,28 @@ const GameLevel: React.FC<GameLevelProps> = ({ levelStatus, onComplete, onBack }
   };
 
   const useHint = () => {
-      if (!hintUsed) {
+      if (!hintUsed && !isAnswered) {
           setHintUsed(true);
           setShowHint(true);
           playSound('click');
+      }
+  }
+
+  const useReinforcement = () => {
+      if (!reinforcementUsed && !isAnswered && question) {
+          setReinforcementUsed(true);
+          playSound('click');
+          
+          // Find invalid options
+          const invalidIndices = question.options
+            .map((_, idx) => idx)
+            .filter(idx => idx !== question.correctAnswerIndex);
+          
+          // Pick one random invalid option to eliminate
+          if (invalidIndices.length > 0) {
+              const randomIndex = Math.floor(Math.random() * invalidIndices.length);
+              setEliminatedOptions([invalidIndices[randomIndex]]);
+          }
       }
   }
 
@@ -251,7 +277,7 @@ const GameLevel: React.FC<GameLevelProps> = ({ levelStatus, onComplete, onBack }
         <div className={`flex flex-col items-center mb-6 relative transition-all duration-200 ${flash ? 'scale-105' : ''}`}>
            {/* HP Bar Container */}
            <div className="absolute -top-3 z-20 flex gap-2 bg-[#3E2723] px-4 py-1.5 rounded-full border-2 border-[#5D4037] shadow-lg">
-                {Array.from({length: maxBossHP}).map((_, i) => (
+                {Array.from({length: maxBossHP > 0 ? maxBossHP : 0}).map((_, i) => (
                     <div key={i} className="relative w-6 h-6 flex items-center justify-center">
                         <Heart 
                             className={`w-full h-full drop-shadow-md transition-all duration-500 ${i < bossHP ? 'text-[#F4511E] fill-[#F4511E]' : 'text-[#5D4037] fill-[#4E342E]'}`} 
@@ -288,19 +314,32 @@ const GameLevel: React.FC<GameLevelProps> = ({ levelStatus, onComplete, onBack }
       {/* Question Card - Light Paper Scroll Style */}
       <div className="scroll-bg p-6 md:p-8 mb-6 text-[#3E2723]">
         <div className="flex justify-between items-start mb-4">
-            <h2 className="text-xl md:text-2xl font-bold font-serif leading-relaxed text-shadow">
+            <h2 className="text-xl md:text-2xl font-bold font-serif leading-relaxed text-shadow flex-1">
             {question.text}
             </h2>
-             {/* Hint Button */}
+             
+             {/* Power-up Buttons */}
             {!isAnswered && (
-                <button 
-                    onClick={useHint} 
-                    disabled={hintUsed}
-                    className={`ml-2 shrink-0 w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all shadow-sm ${hintUsed ? 'bg-[#EFEBE9] border-[#D7CCC8] text-[#BCAAA4]' : 'bg-[#E3F2FD] border-[#90CAF9] text-[#1976D2] hover:scale-110 active:scale-95'}`}
-                    title="锦囊妙计"
-                >
-                    <Sparkles className="w-5 h-5" />
-                </button>
+                <div className="flex gap-2 ml-2">
+                    {/* Reinforcement */}
+                    <button 
+                        onClick={useReinforcement} 
+                        disabled={reinforcementUsed}
+                        className={`shrink-0 w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all shadow-sm ${reinforcementUsed ? 'bg-[#EFEBE9] border-[#D7CCC8] text-[#BCAAA4]' : 'bg-[#FFEBEE] border-[#FFCDD2] text-[#D32F2F] hover:scale-110 active:scale-95'}`}
+                        title="请求援军 (排除一个错误答案)"
+                    >
+                        <Flag className="w-5 h-5" />
+                    </button>
+                    {/* Hint */}
+                    <button 
+                        onClick={useHint} 
+                        disabled={hintUsed}
+                        className={`shrink-0 w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all shadow-sm ${hintUsed ? 'bg-[#EFEBE9] border-[#D7CCC8] text-[#BCAAA4]' : 'bg-[#E3F2FD] border-[#90CAF9] text-[#1976D2] hover:scale-110 active:scale-95'}`}
+                        title="锦囊妙计 (查看提示)"
+                    >
+                        <Sparkles className="w-5 h-5" />
+                    </button>
+                </div>
             )}
         </div>
         
@@ -316,11 +355,16 @@ const GameLevel: React.FC<GameLevelProps> = ({ levelStatus, onComplete, onBack }
 
         <div className="space-y-4">
           {question.options.map((option, idx) => {
+            const isEliminated = eliminatedOptions.includes(idx);
+            
             // Colors for options
             let stateClass = "border-[#BCAAA4] bg-white text-[#5D4037] hover:-translate-y-1 hover:border-[#8D6E63] hover:shadow-md";
             let icon = <div className="w-6 h-6 rounded-full border-2 border-[#D7CCC8] text-[#A1887F] flex items-center justify-center text-xs font-bold">{String.fromCharCode(65+idx)}</div>;
             
-            if (isAnswered) {
+            if (isEliminated) {
+                stateClass = "border-[#E0E0E0] bg-[#F5F5F5] text-[#BDBDBD] opacity-60 cursor-not-allowed";
+                icon = <div className="w-6 h-6 rounded-full border-2 border-[#E0E0E0] text-[#BDBDBD] flex items-center justify-center text-xs"><X className="w-3 h-3" /></div>;
+            } else if (isAnswered) {
               if (idx === question.correctAnswerIndex) {
                 // Vibrant Green for correct
                 stateClass = "border-[#66BB6A] bg-[#E8F5E9] text-[#2E7D32] ring-2 ring-[#66BB6A]";
@@ -338,14 +382,14 @@ const GameLevel: React.FC<GameLevelProps> = ({ levelStatus, onComplete, onBack }
               <button 
                 key={idx} 
                 onClick={() => handleOptionClick(idx)}
-                disabled={isAnswered}
+                disabled={isAnswered || isEliminated}
                 className={`
                     w-full min-h-[60px] text-left p-4 rounded-lg border-b-4 transition-all duration-100 flex items-center gap-4 relative overflow-hidden
                     ${stateClass}
                 `}
               >
                 {icon}
-                <span className="font-medium text-lg font-serif">{option}</span>
+                <span className={`font-medium text-lg font-serif ${isEliminated ? 'line-through decoration-2 decoration-[#BDBDBD]' : ''}`}>{option}</span>
               </button>
             );
           })}
