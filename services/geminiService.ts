@@ -37,6 +37,7 @@ export const generateLevelQuestion = async (
   }
 
   prompt += `
+    同时，请提供一个"hint"（观星提示），它应该给出一个关键线索，或者排除一个错误答案，但不能直接给出正确答案。
     严格遵守以下 JSON 格式输出，所有文本必须使用简体中文：
   `;
 
@@ -57,8 +58,9 @@ export const generateLevelQuestion = async (
           correctAnswerIndex: { type: Type.INTEGER, description: "正确选项的索引 (0, 1, 或 2)" },
           explanation: { type: Type.STRING, description: "答案解析" },
           difficulty: { type: Type.STRING },
+          hint: { type: Type.STRING, description: "锦囊提示，用于帮助玩家" }
         },
-        required: ["text", "options", "correctAnswerIndex", "explanation", "difficulty"],
+        required: ["text", "options", "correctAnswerIndex", "explanation", "difficulty", "hint"],
       },
     },
   });
@@ -71,7 +73,6 @@ export const generateLevelQuestion = async (
 
 export const generateBossAvatar = async (visualPrompt: string): Promise<string | null> => {
   try {
-    // Enforce unified style in the prompt
     const fullPrompt = `Chibi style character sticker of Three Kingdoms character: ${visualPrompt}. 
     Unified Style Guide:
     - Cute Q-version / Chibi proportions (big head, small body)
@@ -83,17 +84,9 @@ export const generateBossAvatar = async (visualPrompt: string): Promise<string |
 
     const response = await ai.models.generateContent({
       model: IMAGE_MODEL,
-      contents: {
-        parts: [
-          { text: fullPrompt }
-        ]
-      },
-      config: {
-        // Nano banana models do not support responseMimeType/responseSchema
-      }
+      contents: { parts: [{ text: fullPrompt }] },
     });
 
-    // Extract image from response
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
         return `data:image/png;base64,${part.inlineData.data}`;
@@ -102,6 +95,6 @@ export const generateBossAvatar = async (visualPrompt: string): Promise<string |
     return null;
   } catch (error) {
     console.error("Image generation failed:", error);
-    return null; // Graceful fallback
+    return null; 
   }
 };

@@ -11,6 +11,7 @@ export interface Question {
   correctAnswerIndex: number;
   explanation: string;
   difficulty: Difficulty;
+  hint: string; // "Guan Xing" hint
 }
 
 export interface BossInfo {
@@ -18,6 +19,8 @@ export interface BossInfo {
   courtesy: string; // 字或号
   description: string;
   visualPrompt: string;
+  defeatQuote: string; // Quote spoken when defeated
+  hp: number; // 2 for normal, 3 for major bosses
 }
 
 export interface LevelStatus {
@@ -31,5 +34,5 @@ export interface PlayerState {
   lives: number;
 }
 
-export const TOTAL_CHAPTERS = 120; // Romance of the Three Kingdoms has 120 chapters
-export const STAGES_PER_CHAPTER = 4; // 1-1, 1-2, 1-3, 1-Boss
+export const TOTAL_CHAPTERS = 120;
+export const STAGES_PER_CHAPTER = 4;
