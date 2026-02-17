@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Question, LevelStatus, Difficulty } from '../types';
+import { Question, LevelStatus, Difficulty, BossInfo } from '../types';
 import { generateLevelQuestion, generateBossAvatar } from '../services/geminiService';
-import { getChapterTitle } from '../chapterData';
+import { getChapterData } from '../chapterData';
 import { LoadingSpinner } from './LoadingSpinner';
-import { CheckCircle2, XCircle, Sword, Scroll, ArrowRight } from 'lucide-react';
+import { CheckCircle2, XCircle, Sword, Scroll, ArrowRight, User } from 'lucide-react';
 
 interface GameLevelProps {
   levelStatus: LevelStatus;
@@ -13,6 +13,7 @@ interface GameLevelProps {
 
 const GameLevel: React.FC<GameLevelProps> = ({ levelStatus, onComplete, onBack }) => {
   const [question, setQuestion] = useState<Question | null>(null);
+  const [bossInfo, setBossInfo] = useState<BossInfo | null>(null);
   const [bossImage, setBossImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
@@ -32,25 +33,52 @@ const GameLevel: React.FC<GameLevelProps> = ({ levelStatus, onComplete, onBack }
       setLoading(true);
       setQuestion(null);
       setBossImage(null);
+      setBossInfo(null);
       setSelectedOption(null);
       setIsAnswered(false);
 
       try {
+        const isBoss = levelStatus.stage === 4;
+        let currentBoss: BossInfo | undefined;
+
+        // 1. Prepare Boss Data if applicable
+        if (isBoss) {
+            const chapterData = getChapterData(levelStatus.chapter);
+            currentBoss = chapterData.boss;
+            setBossInfo(currentBoss);
+
+            // 2. Handle Image: Check Cache -> Generate -> Save
+            const cacheKey = `boss_img_chap_${levelStatus.chapter}`;
+            const cachedImage = localStorage.getItem(cacheKey);
+
+            if (cachedImage) {
+                setBossImage(cachedImage);
+            } else {
+                setImageLoading(true);
+                // Non-blocking generation
+                generateBossAvatar(currentBoss.visualPrompt).then(img => {
+                    if (img) {
+                        setBossImage(img);
+                        try {
+                            localStorage.setItem(cacheKey, img);
+                        } catch (e) {
+                            console.warn("Storage quota exceeded, could not cache image");
+                        }
+                    }
+                    setImageLoading(false);
+                });
+            }
+        }
+
+        // 3. Generate Question (with boss context if needed)
         const q = await generateLevelQuestion(
           levelStatus.chapter, 
           levelStatus.stage, 
-          getDifficulty()
+          getDifficulty(),
+          currentBoss
         );
         setQuestion(q);
 
-        if (q.bossCharacter && q.bossVisualPrompt) {
-          setImageLoading(true);
-          // Non-blocking image generation
-          generateBossAvatar(q.bossVisualPrompt).then(img => {
-            setBossImage(img);
-            setImageLoading(false);
-          });
-        }
       } catch (e) {
         console.error("Error loading level", e);
       } finally {
@@ -59,7 +87,7 @@ const GameLevel: React.FC<GameLevelProps> = ({ levelStatus, onComplete, onBack }
     };
 
     initLevel();
-  }, [levelStatus]); // Re-run when levelStatus changes
+  }, [levelStatus]);
 
   const handleOptionClick = (index: number) => {
     if (isAnswered) return;
@@ -94,6 +122,7 @@ const GameLevel: React.FC<GameLevelProps> = ({ levelStatus, onComplete, onBack }
 
   const isBoss = levelStatus.stage === 4;
   const isCorrect = selectedOption === question.correctAnswerIndex;
+  const chapterTitle = getChapterData(levelStatus.chapter).title;
 
   return (
     <div className="max-w-2xl mx-auto w-full p-4 animate-fadeIn">
@@ -111,24 +140,29 @@ const GameLevel: React.FC<GameLevelProps> = ({ levelStatus, onComplete, onBack }
             </div>
         </div>
         <div className="text-sm font-serif text-stone-800 font-bold opacity-80 leading-tight">
-            {getChapterTitle(levelStatus.chapter)}
+            {chapterTitle}
         </div>
       </div>
 
       {/* Boss Section */}
-      {isBoss && (
-        <div className="flex flex-col items-center mb-8 relative">
-          <div className="w-32 h-32 md:w-48 md:h-48 rounded-full border-4 border-amber-600 bg-stone-200 overflow-hidden shadow-xl flex items-center justify-center relative">
+      {isBoss && bossInfo && (
+        <div className="flex flex-col items-center mb-8 relative bg-stone-100 rounded-xl p-4 border border-stone-200 shadow-inner">
+          <div className="w-32 h-32 md:w-40 md:h-40 rounded-full border-4 border-amber-600 bg-white overflow-hidden shadow-xl flex items-center justify-center relative mb-3">
             {imageLoading && !bossImage ? (
-              <span className="text-xs text-stone-500 animate-pulse text-center px-2">正在召唤 {question.bossCharacter}...</span>
+              <span className="text-xs text-stone-500 animate-pulse text-center px-2">正在绘制 {bossInfo.name}...</span>
             ) : bossImage ? (
               <img src={bossImage} alt="Boss" className="w-full h-full object-cover" />
             ) : (
               <Sword className="w-12 h-12 text-stone-400" />
             )}
           </div>
-          <div className="mt-4 bg-red-900 text-amber-50 px-4 py-1 rounded-full text-sm font-bold shadow-md">
-            守关大将：{question.bossCharacter}
+          
+          <div className="text-center">
+             <div className="flex items-center justify-center gap-2 mb-1">
+                <h2 className="text-xl font-bold text-stone-900">{bossInfo.name}</h2>
+                <span className="text-sm font-serif text-amber-700 bg-amber-100 px-2 py-0.5 rounded">{bossInfo.courtesy}</span>
+             </div>
+             <p className="text-xs md:text-sm text-stone-600 italic max-w-md">“{bossInfo.description}”</p>
           </div>
         </div>
       )}

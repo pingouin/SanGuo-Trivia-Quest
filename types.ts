@@ -11,8 +11,13 @@ export interface Question {
   correctAnswerIndex: number;
   explanation: string;
   difficulty: Difficulty;
-  bossCharacter?: string; // Only present if it's a boss level
-  bossVisualPrompt?: string; // Description for image generation
+}
+
+export interface BossInfo {
+  name: string;
+  courtesy: string; // 字或号
+  description: string;
+  visualPrompt: string;
 }
 
 export interface LevelStatus {

@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { Difficulty, Question } from "../types";
+import { Difficulty, Question, BossInfo } from "../types";
 
 // Initialize Gemini Client
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -11,26 +11,32 @@ const IMAGE_MODEL = "gemini-2.5-flash-image";
 export const generateLevelQuestion = async (
   chapter: number,
   stage: number,
-  difficulty: Difficulty
+  difficulty: Difficulty,
+  bossContext?: BossInfo
 ): Promise<Question> => {
   const isBoss = stage === 4;
   
-  const prompt = `
+  let prompt = `
     请基于《三国演义》第 ${chapter} 回的内容，生成一道单项选择题。
     
     当前关卡：${stage}/4。
     难度等级：${difficulty}。
-    
-    ${isBoss ? `
-      这是一个BOSS关卡。
-      1. 请找出第 ${chapter} 回中出现的一个关键角色（反派或正派）作为“BOSS”。
-      2. 问题应该是具有挑战性的，并且与该角色或本回的主要战役/事件相关。
-      3. 在 'bossCharacter' 字段中提供角色中文名称。
-      4. 在 'bossVisualPrompt' 字段中提供该角色的简短视觉描述（用于生成图片），例如“吕布，身披兽面吞头铠，手持方天画戟，神情威猛”。
-    ` : `
-      这是一个普通遭遇战关卡。请关注情节细节或次要角色。
-    `}
+  `;
 
+  if (isBoss && bossContext) {
+    prompt += `
+      这是一个BOSS关卡（守关大将：${bossContext.name}）。
+      1. 问题必须与【${bossContext.name}】在第 ${chapter} 回中的事迹、对话或战斗相关。
+      2. 问题应当具有挑战性，测试玩家对该情节的熟悉程度。
+      3. 解析中应当提及 ${bossContext.name} 在此回的作用。
+    `;
+  } else {
+    prompt += `
+      这是一个普通遭遇战关卡。请关注情节细节或次要角色。
+    `;
+  }
+
+  prompt += `
     严格遵守以下 JSON 格式输出，所有文本必须使用简体中文：
   `;
 
@@ -51,8 +57,6 @@ export const generateLevelQuestion = async (
           correctAnswerIndex: { type: Type.INTEGER, description: "正确选项的索引 (0, 1, 或 2)" },
           explanation: { type: Type.STRING, description: "答案解析" },
           difficulty: { type: Type.STRING },
-          bossCharacter: { type: Type.STRING, description: "BOSS角色名 (仅BOSS关卡需要)" },
-          bossVisualPrompt: { type: Type.STRING, description: "BOSS形象描述 (仅BOSS关卡需要)" }
         },
         required: ["text", "options", "correctAnswerIndex", "explanation", "difficulty"],
       },
@@ -67,15 +71,21 @@ export const generateLevelQuestion = async (
 
 export const generateBossAvatar = async (visualPrompt: string): Promise<string | null> => {
   try {
-    const prompt = `A cute Q-version (chibi style) character sticker of ${visualPrompt}. 
-    White background, vector art style, thick outlines, vibrant colors, ancient Chinese armor/clothing. 
-    High quality, game asset style.`;
+    // Enforce unified style in the prompt
+    const fullPrompt = `Chibi style character sticker of Three Kingdoms character: ${visualPrompt}. 
+    Unified Style Guide:
+    - Cute Q-version / Chibi proportions (big head, small body)
+    - Thick vector-like black outlines
+    - Flat, vibrant cell-shading colors
+    - White background
+    - Minimalist details but recognizable features
+    - High quality game asset`;
 
     const response = await ai.models.generateContent({
       model: IMAGE_MODEL,
       contents: {
         parts: [
-          { text: prompt }
+          { text: fullPrompt }
         ]
       },
       config: {
