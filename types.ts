@@ -7,6 +7,11 @@ export enum Difficulty {
 }
 
 export type GameMode = 'story' | 'free';
+export type QuestionSource = 'ai' | 'local';
+
+export interface AppSettings {
+  questionSource: QuestionSource;
+}
 
 export interface Question {
   text: string;
@@ -14,28 +19,29 @@ export interface Question {
   correctAnswerIndex: number;
   explanation: string;
   difficulty: Difficulty;
-  hint: string; // "Guan Xing" hint
+  hint: string;
 }
 
 export interface BossInfo {
   name: string;
-  courtesy: string; // 字或号
+  courtesy: string;
   description: string;
   visualPrompt: string;
-  defeatQuote: string; // Quote spoken when defeated
-  hp: number; // 2 for normal, 3 for major bosses
+  defeatQuote: string;
+  hp: number;
 }
 
 export interface LevelStatus {
   chapter: number;
-  stage: number; // 1, 2, 3, or 4 (Boss)
+  stage: number;
 }
 
 export interface PlayerState {
   currentLevel: LevelStatus;
   maxUnlockedLevel: LevelStatus;
   lives: number;
+  settings: AppSettings;
 }
 
 export const TOTAL_CHAPTERS = 120;
-export const STAGES_PER_CHAPTER = 4;
+export const STAGES_PER_CHAPTER = 3;

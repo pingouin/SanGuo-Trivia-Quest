@@ -1,5 +1,6 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
-import { Difficulty, Question, BossInfo } from "../types";
+import { Difficulty, Question, BossInfo, STAGES_PER_CHAPTER } from "../types";
 
 // Initialize Gemini Client
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -12,14 +13,15 @@ export const generateLevelQuestion = async (
   chapter: number,
   stage: number,
   difficulty: Difficulty,
-  bossContext?: BossInfo
+  bossContext?: BossInfo,
+  excludeQuestions: string[] = []
 ): Promise<Question> => {
-  const isBoss = stage === 4;
+  const isBoss = stage === STAGES_PER_CHAPTER;
   
   let prompt = `
     请基于《三国演义》第 ${chapter} 回的内容，生成一道单项选择题。
     
-    当前关卡：${stage}/4。
+    当前关卡：${stage}/${STAGES_PER_CHAPTER}。
     难度等级：${difficulty}。
   `;
 
@@ -33,6 +35,13 @@ export const generateLevelQuestion = async (
   } else {
     prompt += `
       这是一个普通遭遇战关卡。请关注情节细节或次要角色。
+    `;
+  }
+
+  if (excludeQuestions.length > 0) {
+    prompt += `
+      注意：请不要生成与以下内容重复或极其相似的问题：
+      ${excludeQuestions.join('\n')}
     `;
   }
 

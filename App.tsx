@@ -1,15 +1,20 @@
+
 import React, { useState, useEffect } from 'react';
-import { LevelStatus, PlayerState, GameMode } from './types';
+import { LevelStatus, PlayerState, GameMode, QuestionSource, STAGES_PER_CHAPTER } from './types';
 import ChapterMap from './components/ChapterMap';
 import GameLevel from './components/GameLevel';
-import { Scroll, Sword, Map as MapIcon } from 'lucide-react';
+import { SettingsModal } from './components/SettingsModal';
+import { Scroll, Sword, Map as MapIcon, Settings } from 'lucide-react';
 
 const STORAGE_KEY = 'sangou_trivia_save_v1';
 
 const INITIAL_STATE: PlayerState = {
   currentLevel: { chapter: 1, stage: 1 },
   maxUnlockedLevel: { chapter: 1, stage: 1 },
-  lives: 3
+  lives: 3,
+  settings: {
+      questionSource: 'ai'
+  }
 };
 
 export default function App() {
@@ -21,17 +26,13 @@ export default function App() {
   const [gameMode, setGameMode] = useState<GameMode | null>(null);
   const [view, setView] = useState<'map' | 'game'>('map');
   const [activeLevel, setActiveLevel] = useState<LevelStatus | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
   }, [gameState]);
 
-  // Handle entering a chapter from the map
   const handleSelectChapter = (chapter: number) => {
-    // Logic depends on mode slightly, but mostly we just set the active level
-    // In Story mode, we might resume progress, but clicking a chapter usually means starting that chapter.
-    // However, if they click the furthest unlocked chapter in story mode, we might want to resume the specific stage.
-    
     if (gameMode === 'story' && chapter === gameState.maxUnlockedLevel.chapter) {
       setActiveLevel(gameState.maxUnlockedLevel);
     } else {
@@ -42,26 +43,30 @@ export default function App() {
 
   const handleLevelComplete = (success: boolean) => {
     if (!activeLevel) return;
+    const currentActiveLevel = activeLevel;
 
     if (success) {
-      const isBossLevel = activeLevel.stage === 4;
+      const isBossLevel = currentActiveLevel.stage === STAGES_PER_CHAPTER;
       
-      let nextStage = activeLevel.stage + 1;
-      let nextChapter = activeLevel.chapter;
+      let nextStage = currentActiveLevel.stage + 1;
+      let nextChapter = currentActiveLevel.chapter;
 
-      if (nextStage > 4) {
+      if (nextStage > STAGES_PER_CHAPTER) {
         nextStage = 1;
         nextChapter += 1;
       }
 
+      if (nextChapter > 120) {
+          nextChapter = 120;
+          nextStage = STAGES_PER_CHAPTER;
+      }
+
       const nextLevelStatus = { chapter: nextChapter, stage: nextStage };
 
-      // Only update progress in Story Mode
       if (gameMode === 'story') {
-        // Only advance max unlocked if we just beat the current max level
         if (
-          activeLevel.chapter === gameState.maxUnlockedLevel.chapter && 
-          activeLevel.stage === gameState.maxUnlockedLevel.stage
+          currentActiveLevel.chapter === gameState.maxUnlockedLevel.chapter && 
+          currentActiveLevel.stage === gameState.maxUnlockedLevel.stage
         ) {
           setGameState(prev => ({
             ...prev,
@@ -72,18 +77,23 @@ export default function App() {
       }
 
       if (isBossLevel) {
-          // Return to map after defeating boss
-          setActiveLevel(null);
           setView('map');
+          setActiveLevel(null);
       } else {
-          // Immediately continue to next stage within the chapter
           setActiveLevel(nextLevelStatus);
       }
       
     } else {
-      // Failed: Reload current level (using key prop to force remount)
-      setActiveLevel({ ...activeLevel }); 
+      // Retry level
+      setActiveLevel({ ...currentActiveLevel }); 
     }
+  };
+
+  const handleUpdateSetting = (source: QuestionSource) => {
+      setGameState(prev => ({
+          ...prev,
+          settings: { ...prev.settings, questionSource: source }
+      }));
   };
 
   const handleBackToMap = () => {
@@ -100,14 +110,12 @@ export default function App() {
   const resetProgress = () => {
     if(confirm("确定要重置所有进度吗？")) {
         setGameState(INITIAL_STATE);
-        // Don't change view, just reset state
     }
   }
 
-  // Format: 1-1, 1-2, 1-3, 1-BOSS
   const getProgressDisplay = () => {
       const { chapter, stage } = gameState.maxUnlockedLevel;
-      const stageText = stage === 4 ? 'BOSS' : stage;
+      const stageText = stage === STAGES_PER_CHAPTER ? 'BOSS' : stage;
       return `${chapter}-${stageText}`;
   };
 
@@ -115,10 +123,17 @@ export default function App() {
   if (!gameMode) {
       return (
         <div className="min-h-screen text-[#3E2723] flex flex-col font-serif items-center justify-center p-4 relative overflow-hidden">
-             {/* Background Decoration */}
              <div className="absolute inset-0 bg-[#FFF8E1] bg-[url('https://www.transparenttextures.com/patterns/cream-paper.png')] -z-20"></div>
              <div className="absolute top-0 left-0 w-full h-full opacity-5 pointer-events-none -z-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-[#FFB300] to-transparent"></div>
              
+             {showSettings && (
+                 <SettingsModal 
+                    currentSource={gameState.settings.questionSource}
+                    onUpdateSource={handleUpdateSetting}
+                    onClose={() => setShowSettings(false)}
+                 />
+             )}
+
              <div className="text-center mb-12 animate-fadeIn">
                  <div className="inline-block p-4 rounded-full border-4 border-[#3E2723] bg-[#FFB300] mb-6 shadow-xl">
                      <Scroll className="w-16 h-16 text-[#3E2723]" />
@@ -128,7 +143,6 @@ export default function App() {
              </div>
 
              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl w-full">
-                 {/* Story Mode Card */}
                  <button 
                     onClick={() => setGameMode('story')}
                     className="group relative bg-[#5D4037] text-[#FFF8E1] p-8 rounded-2xl border-4 border-[#8D6E63] shadow-[0_8px_0_#3E2723] hover:translate-y-1 hover:shadow-[0_4px_0_#3E2723] active:translate-y-2 active:shadow-none transition-all text-left overflow-hidden"
@@ -145,7 +159,6 @@ export default function App() {
                      </div>
                  </button>
 
-                 {/* Free Mode Card */}
                  <button 
                     onClick={() => setGameMode('free')}
                     className="group relative bg-[#FFF8E1] text-[#3E2723] p-8 rounded-2xl border-4 border-[#FFB300] shadow-[0_8px_0_#F57F17] hover:translate-y-1 hover:shadow-[0_4px_0_#F57F17] active:translate-y-2 active:shadow-none transition-all text-left overflow-hidden"
@@ -163,8 +176,15 @@ export default function App() {
                  </button>
              </div>
 
-             <div className="mt-12 text-[#8D6E63] text-xs opacity-60">
-                 v1.1 | Powered by Google Gemini
+             <button 
+                onClick={() => setShowSettings(true)}
+                className="mt-12 flex items-center gap-2 bg-[#D7CCC8] px-6 py-2 rounded-full border-2 border-[#A1887F] text-[#5D4037] font-bold hover:bg-[#BCAAA4] transition-colors shadow-sm"
+             >
+                 <Settings className="w-5 h-5" /> 兵书配置
+             </button>
+
+             <div className="mt-8 text-[#8D6E63] text-xs opacity-60">
+                 v1.3 | Powered by Google Gemini
              </div>
         </div>
       );
@@ -173,7 +193,14 @@ export default function App() {
   // --- Main Game Loop ---
   return (
     <div className="min-h-screen text-[#3E2723] flex flex-col font-serif">
-      {/* Navbar */}
+      {showSettings && (
+          <SettingsModal 
+            currentSource={gameState.settings.questionSource}
+            onUpdateSource={handleUpdateSetting}
+            onClose={() => setShowSettings(false)}
+          />
+      )}
+
       <header className="bg-[#5D4037] text-[#FFF8E1] p-3 shadow-lg sticky top-0 z-50 border-b-4 border-[#FFB300]">
         <div className="max-w-4xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-3 cursor-pointer group" onClick={handleBackToMap}>
@@ -194,6 +221,13 @@ export default function App() {
                     进度: {getProgressDisplay()}
                 </div>
             )}
+            <button 
+                onClick={() => setShowSettings(true)}
+                className="p-1.5 rounded-full hover:bg-white/10 text-[#FFB300] transition-colors"
+                title="配置"
+            >
+                <Settings className="w-5 h-5" />
+            </button>
             <button onClick={handleBackToTitle} className="text-xs text-[#FFB300] hover:text-white underline">
                 返回标题
             </button>
@@ -201,7 +235,6 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="flex-grow flex flex-col items-center w-full">
         {view === 'map' && (
           <div className="w-full">
@@ -230,13 +263,13 @@ export default function App() {
           <GameLevel 
             key={`${activeLevel.chapter}-${activeLevel.stage}`} 
             levelStatus={activeLevel} 
+            questionSource={gameState.settings.questionSource}
             onComplete={handleLevelComplete}
             onBack={handleBackToMap}
           />
         )}
       </main>
 
-      {/* Footer */}
       <footer className="bg-[#4E342E] text-[#D7CCC8] text-center p-6 text-xs border-t-4 border-[#3E2723]">
         <p className="mb-2 font-bold tracking-widest text-[#FFECB3]">ROMANCE OF THE THREE KINGDOMS</p>
         <p className="opacity-75">Powered by Google Gemini 2.5 & 3.0</p>
